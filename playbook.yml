@@ -1,0 +1,9 @@
+---
+- name: Configure NGINX on EC2 instances with specific tags
+  #hosts: tag_Role_webserver:&tag_Environment_production
+  hosts: all
+  become: yes
+  user: centos
+  roles:
+    - geerlingguy.nginx
+

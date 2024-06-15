@@ -1,0 +1,68 @@
+---
+- name: Create a security group and EC2 instances
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - aws_credentials.yml
+  vars:
+    access_key: "{{ vault_aws_access_key }}"
+    secret_key: "{{ vault_aws_secret_key }}"
+    aws_region: us-east-1
+    security_group_name: ansible_class_security_group
+    allowed_ips:
+      - 67.81.98.63/32
+      - 74.96.85.32/32  
+    ami_id: ami-04b70fa74e45c3917
+    vpc_subnet_id: subnet-08975b4267e64fc66
+    vpc_id: vpc-02e0018207547d640
+    instance_type: t2.micro
+    instance_count: 3
+    key_name: ansible_class_key  # Ensure this key pair exists in your AWS account
+
+  tasks:
+    - name: Create security group
+      amazon.aws.ec2_security_group:
+        name: "{{ security_group_name }}"
+        description: "Security group with SSH access"
+        region: "{{ aws_region }}"
+        vpc_id: "{{ vpc_id }}"
+        rules:
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: "{{ item }}"
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        state: present
+      loop: "{{ allowed_ips }}"
+      register: security_group
+
+    - name: Ensure the security group ID is gathered
+      set_fact:
+        security_group_id: "{{ security_group.results[0].group_id }}"
+
+    - name: Launch EC2 instances
+      amazon.aws.ec2_instance:
+        key_name: "{{ key_name }}"
+        vpc_subnet_id: "{{ vpc_subnet_id }}"
+        security_group: "{{ security_group_id }}"
+        instance_type: "{{ instance_type }}"
+        image_id: "{{ ami_id }}"
+        wait: yes
+        count: "{{ instance_count }}"
+        region: "{{ aws_region }}"
+        network: 
+          vpc_id: "{{ vpc_id }}"
+          assign_public_ip: true
+            
+      register: ec2
+
+    - name: Tag instances
+      ec2_tag:
+        resource: "{{ item.id }}"
+        region: "{{ aws_region }}"
+        tags:
+          Name: MyInstance
+      loop: "{{ ec2.instances }}"
+
